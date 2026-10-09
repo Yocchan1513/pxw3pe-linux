@@ -1,7 +1,7 @@
 # pxw3pe-linux (azuki15 改良版)
 
 > このリポジトリは、inaba-garnet 氏の [inaba-garnet/pxw3pe-linux](https://github.com/inaba-garnet/pxw3pe-linux)
-> をもとにした改良版です。GitHub 上のフォークではありませんが、元のコミット履歴はそのまま残しています。
+> をフォークした改良版です。元のコミット履歴はそのまま残しています。
 > ドライバ本体の作者は inaba-garnet 氏です。不具合は、まずこのリポジトリで報告してください。
 >
 > 元のリポジトリからの主な変更点:
