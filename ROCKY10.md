@@ -181,6 +181,61 @@ BS/CS を DVB で受信するときは、`--tsid` で TSID を指定してくだ
 | `adapter0`, `adapter1` | BS/CS |
 | `adapter2`, `adapter3` | 地デジ |
 
+## 7. Mirakurun で配信する(TVTest などから視聴)
+
+Mirakurun 4.x は Node.js(22 または 24)で直接動かし、systemd のサービスにします。
+公式では PM2 を使う方法が「Legacy」とされているので、代わりに [`contrib/mirakurun/mirakurun.service`](contrib/mirakurun/mirakurun.service) を使います。
+recisdb が選局と B-CAS のデコードまで行うので、Mirakurun 側の `decoder` は設定しません。
+
+```sh
+sudo dnf install -y nodejs npm
+sudo install -m 0755 ~/.cargo/bin/recisdb /usr/local/bin/recisdb   # root で動くサービスから使うので、ホームの外に置く
+sudo npm install -g mirakurun@4.1.5 --foreground-scripts
+
+sudo mkdir -p /usr/local/etc/mirakurun
+sudo install -m 0644 contrib/mirakurun/tuners.yml /usr/local/etc/mirakurun/tuners.yml
+sudo install -m 0644 contrib/mirakurun/mirakurun.service /etc/systemd/system/mirakurun.service
+```
+
+### channels.yml を作る
+
+- **BS/CS:** DVB では TSID を指定する必要があります。受信した NIT から一覧を作ります。
+  ```sh
+  recisdb tune -i /dev/dvb/adapter0/frontend0 -c BS15_0 --tsid 16625 -t 15 /tmp/bs.ts
+  recisdb tune -i /dev/dvb/adapter1/frontend0 -c CS2 -t 15 /tmp/cs.ts
+  python3 contrib/mirakurun/nit2channels.py /tmp/bs.ts /tmp/cs.ts | sudo tee /usr/local/etc/mirakurun/channels.yml
+  ```
+- **地デジ:** Mirakurun のスキャン機能で追加します。tuners.yml で、GR のチャンネル番号の先頭に `T` を付けて recisdb に渡すようにしてあります。
+
+```sh
+sudo systemctl daemon-reload && sudo systemctl enable --now mirakurun
+sudo firewall-cmd --permanent --add-port=40772/tcp && sudo firewall-cmd --reload
+curl -s -N -X PUT "http://127.0.0.1:40772/api/config/channels/scan?type=GR&minCh=13&maxCh=62&refresh=false"
+sudo systemctl restart mirakurun      # スキャン後に再起動が必要です
+curl -s http://127.0.0.1:40772/api/services | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))'
+```
+
+2026-10-09 の実機確認では、GR 8ch、BS 26TS、CS 12TS で、合計 120 サービスが登録されました。
+他の PC から地デジと BS の映像を取得でき、暗号化されたまま残ったパケットはありませんでした。
+
+信号の弱い TS は、サービススキャンで `stream has closed before get services` になります
+(今回は CS12、CS16、CS18。周波数の高い CS ほど弱くなる傾向がありました)。
+受信できない TS は、`channels.yml` で `isDisabled: true` にしてください。
+
+### Windows の TVTest から見る
+
+[BonDriver_Mirakurun](https://github.com/Chinachu/BonDriver_Mirakurun/releases) v2.0(x64)の DLL と ini を、TVTest の BonDriver フォルダに置きます。
+ini は次のように設定します。
+
+```ini
+[GLOBAL]
+SERVER_HOST="192.168.1.249"
+SERVER_PORT=40772
+DECODE_B25=0      ; デコードはサーバー側の recisdb で行うので 0 にする
+PRIORITY=0
+SERVICE_SPLIT=0
+```
+
 ---
 
 ## カーネルを更新したとき

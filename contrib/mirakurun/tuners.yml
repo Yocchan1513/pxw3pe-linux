@@ -1,0 +1,15 @@
+# PX-W3PE (pxw3pe driver, V4L-DVB). recisdb tunes and descrambles (B-CAS) itself.
+# <tsidArg> comes from channels.yml commandVars (empty for GR).
+# GR: Mirakurun passes bare channel numbers (e.g. 26); recisdb needs the T prefix (T26).
+- name: PX-W3PE-S0
+  types: [BS, CS]
+  command: /usr/local/bin/recisdb tune --device /dev/dvb/adapter0/frontend0 --channel <channel> <tsidArg> -
+- name: PX-W3PE-S1
+  types: [BS, CS]
+  command: /usr/local/bin/recisdb tune --device /dev/dvb/adapter1/frontend0 --channel <channel> <tsidArg> -
+- name: PX-W3PE-T0
+  types: [GR]
+  command: /usr/local/bin/recisdb tune --device /dev/dvb/adapter2/frontend0 --channel T<channel> -
+- name: PX-W3PE-T1
+  types: [GR]
+  command: /usr/local/bin/recisdb tune --device /dev/dvb/adapter3/frontend0 --channel T<channel> -

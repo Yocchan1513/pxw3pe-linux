@@ -1,0 +1,17 @@
+[Unit]
+Description=Mirakurun (ISDB tuner server)
+Documentation=https://github.com/Chinachu/Mirakurun
+After=network-online.target pcscd.socket
+Wants=network-online.target pcscd.socket
+
+[Service]
+Type=simple
+# lib/server.js copies default configs from ./config on first start
+WorkingDirectory=/usr/local/lib/node_modules/mirakurun
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node --max-semi-space-size=64 -r source-map-support/register lib/server.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
