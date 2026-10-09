@@ -15,6 +15,7 @@ Rocky Linux 10(RHEL 10 系)の標準カーネルは、デジタルTV(DVB)機能�
 | カーネル | `6.12.0-211.16.1.el10_2.0.1.x86_64` |
 | カード | PX-W3PE(PCI `188b:5220`、サブシステム `0b06:0001`) |
 | Secure Boot | 無効(有効な場合は、モジュールへの署名と MOK 登録が別途必要です) |
+| 実機確認 | 2026-10-09。DKMS でのビルド、モジュールの読み込み、DVB アダプタ4つの登録まで確認済み |
 
 ---
 
@@ -57,7 +58,11 @@ dkms status
 # 例: pxw3pe/1.0, 6.12.0-211.16.1.el10_2.0.1.x86_64, x86_64: installed
 ```
 
-`/lib/modules/$(uname -r)/updates/dkms/` に `pxw3pe.ko` と `dvb-core.ko` の2つが入っていれば成功です。
+`/lib/modules/$(uname -r)/extra/` に `pxw3pe.ko.xz` と `dvb-core.ko.xz` の2つが入っていれば成功です
+(Rocky 10 の dkms 3.4 では、インストール先が `extra/` になります)。
+`Deprecated feature: CLEAN` という警告が出ますが、無視してかまいません。
+
+カーネルが複数入っている場合は、`-k <カーネル版>` を付けて `dkms install` を実行すると、それぞれのカーネル向けにビルドされます。
 
 ## 4. 読み込んで確認する
 
