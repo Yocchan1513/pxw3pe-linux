@@ -13,6 +13,8 @@
 > - `dkms.conf` の `AUTO_INSTALL` を `AUTOINSTALL` に修正(カーネル更新時に自動で再ビルドされるようにしました)
 > - Rocky Linux 10(RHEL 10 系)への対応。標準カーネルに DVB が入っていないため、`dvb-core` を同梱して
 >   DKMS で一緒にビルドします。手順は [`ROCKY10.md`](ROCKY10.md) を参照してください。
+>   Rocky Linux 10.2 の実機で、地デジ・BS の受信と、4チューナーの同時録画を確認しています。
+> - recisdb は 1.3.1 以降を、`--features dvb` を付けてビルドしてください。1.2.x は録画の終了時にフリーズすることがあります。
 
 PLEXのPX-W3PE Rev1.3というPCIeテレビチューナーカード用のLinux DVBドライバです。
 ブリッジにASICENのASV5220、制御チップにASIE5606を使っていて、ISDB-SとISDB-Tの
