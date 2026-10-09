@@ -1,4 +1,18 @@
-# pxw3pe-linux
+# pxw3pe-linux (azuki15 改良版)
+
+> このリポジトリは、inaba-garnet 氏の [inaba-garnet/pxw3pe-linux](https://github.com/inaba-garnet/pxw3pe-linux)
+> をもとにした改良版です。GitHub 上のフォークではありませんが、元のコミット履歴はそのまま残しています。
+> ドライバ本体の作者は inaba-garnet 氏です。不具合は、まずこのリポジトリで報告してください。
+>
+> 元のリポジトリからの主な変更点:
+>
+> - 作者の `fix/kernel7-pci-irq-intx` ブランチを取り込み(`PCI_IRQ_INTX` への対応と DKMS のビルド修正)
+> - PX-W3PE Rev1.2 への対応。元リポジトリの [Issue #1](https://github.com/inaba-garnet/pxw3pe-linux/issues/1)
+>   で Choro5083 氏が公開したパッチを適用しました。レジスタ配置を自動で判別し、ISDB-S の PLL 書き込みで
+>   バイトが欠ける問題も修正しています。
+> - `dkms.conf` の `AUTO_INSTALL` を `AUTOINSTALL` に修正(カーネル更新時に自動で再ビルドされるようにしました)
+> - Rocky Linux 10(RHEL 10 系)への対応。標準カーネルに DVB が入っていないため、`dvb-core` を同梱して
+>   DKMS で一緒にビルドします。手順は [`ROCKY10.md`](ROCKY10.md) を参照してください。
 
 PLEXのPX-W3PE Rev1.3というPCIeテレビチューナーカード用のLinux DVBドライバです。
 ブリッジにASICENのASV5220、制御チップにASIE5606を使っていて、ISDB-SとISDB-Tの
