@@ -16,6 +16,13 @@ ifneq ($(KERNELRELEASE),)
 obj-m       := pxw3pe.o
 pxw3pe-objs := pxw3pe_pci.o
 
+# RHEL / Rocky Linux 10 kernels ship without DVB support: build the bundled
+# dvb-core (dvb-core/) alongside, with the same Kconfig defaults.
+ifeq ($(CONFIG_DVB_CORE),)
+obj-m       += dvb-core/
+ccflags-y   += -DCONFIG_DVB_MAX_ADAPTERS=16 -DCONFIG_DVB_DYNAMIC_MINORS=1
+endif
+
 else
 
 # ---- normal make pass ----

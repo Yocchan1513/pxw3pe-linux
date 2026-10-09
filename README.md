@@ -19,6 +19,9 @@ PLEXのPX-W3PE Rev1.3というPCIeテレビチューナーカード用のLinux D
 - x86-64のLinux、kernel 5.15系で動作確認
 - 録画・選局はrecisdb 1.2系
 
+Rocky Linux 10(RHEL 10系)は標準カーネルにDVBが入っていません。同梱の`dvb-core/`を使う手順を
+[`ROCKY10.md`](ROCKY10.md)にまとめています。
+
 ---
 
 ## ファームウェアの準備
