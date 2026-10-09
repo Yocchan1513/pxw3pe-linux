@@ -139,6 +139,32 @@ enum {
 #define I2C_CTL_DONE	0x400000	/* transaction done                 */
 #define I2C_CTL_ERR	0x280000	/* error bits                       */
 
+/*
+ * The ASV5220 exposes two BAR layouts for the I2C engine and the DMA
+ * channel registers. The vendor driver (FUSBDTV_Start) programs the standard
+ * layout, probes the bus once, and on failure switches the whole table to the
+ * alternate one. Rev1.3 boards answer on the standard layout; Rev1.2 boards
+ * leave the standard I2C FSM dead (FSTAT stays 0) and only the alternate
+ * engine reaches idle. The TS-mode registers (0xa00/0xb40) and the IRQ block
+ * are the same in both layouts.
+ *
+ * REG_I2C_* and DMA_* above name the standard layout; the accessors below
+ * rebase them onto the selected one.
+ */
+struct pxw3pe_regmap {
+	const char	*name;
+	u32		i2c;		/* I2C engine base (CTL)           */
+	u32		dma;		/* port0 ch0 DMA_ADR_LO            */
+	u32		dma_port;	/* per-port stride of the DMA block */
+};
+
+static const struct pxw3pe_regmap pxw3pe_regmaps[] = {
+	{ "standard",  REG_I2C_CTL, DMA_ADR_LO, 0x140 },
+	{ "alternate", 0xa80,       0xd00,      0x040 },
+};
+
+#define I2C_REG(p, r)	((p)->rm->i2c + ((r) - REG_I2C_CTL))
+
 /* control bytes (from official i2c_write jump table). */
 #define CTRL_WR		0xc0		/* config/GPIO write + stop         */
 #define CTRL_RD		0xe0		/* config/GPIO read                 */
@@ -205,6 +231,7 @@ struct pxw3pe_adap {
 struct pxw3pe {
 	struct pci_dev	*pdev;
 	void __iomem	*bar;
+	const struct pxw3pe_regmap *rm;	/* selected BAR layout */
 	struct mutex	i2c_lock;	/* serialize transactions */
 	/*
 	 * Per-composite-chip serialization. The S and T cores of one chip share
@@ -332,6 +359,11 @@ module_param(descramble, bool, 0644);
 MODULE_PARM_DESC(descramble,
 		 "Apply ASV5606 transport DES descramble when key firmware is present (default on)");
 
+static int regmap = -1;
+module_param(regmap, int, 0444);
+MODULE_PARM_DESC(regmap,
+		 "BAR register layout: -1 = auto-detect (default), 0 = standard (Rev1.3), 1 = alternate (Rev1.2)");
+
 /*
  * Firmware blob layout (PXW3PE_FW_NAME): 4-byte magic "PXWF", 1-byte version,
  * 3 reserved, then the per-model secrets. The operator builds this from their
@@ -414,7 +446,9 @@ static void pxw3pe_load_firmware(struct pxw3pe *p)
 static int i2c_wait_idle(struct pxw3pe *p)
 {
 	void __iomem *bar = p->bar;
-	u32 fstat = REG_I2C_FSTAT;
+	u32 fstat = I2C_REG(p, REG_I2C_FSTAT);
+	u32 ctl = I2C_REG(p, REG_I2C_CTL);
+	u32 swctl = I2C_REG(p, REG_I2C_SWCTL);
 	int i, retry;
 
 	for (retry = 0; retry < 2; retry++) {
@@ -427,12 +461,46 @@ static int i2c_wait_idle(struct pxw3pe *p)
 		}
 
 		/* SPEC-I2C-010: recover a stuck bridge I2C FSM with SW strobe. */
-		writel(0, bar + REG_I2C_CTL);
-		writel(readl(bar + REG_I2C_SWCTL) | 0x20, bar + REG_I2C_SWCTL);
+		writel(0, bar + ctl);
+		writel(readl(bar + swctl) | 0x20, bar + swctl);
 		udelay(1);
-		writel(readl(bar + REG_I2C_SWCTL) & ~0x20u, bar + REG_I2C_SWCTL);
+		writel(readl(bar + swctl) & ~0x20u, bar + swctl);
 		usleep_range(20, 50);
 	}
+	return -EBUSY;
+}
+
+/*
+ * Pick the BAR layout whose I2C engine reaches idle (see struct
+ * pxw3pe_regmap). Must run after bridge_init() has clocked the bridge and
+ * before the first I2C transaction. The standard layout is tried first so
+ * Rev1.3 boards keep their existing behaviour.
+ */
+static int i2c_select_regmap(struct pxw3pe *p)
+{
+	struct device *dev = &p->pdev->dev;
+	int i;
+
+	if (regmap >= 0) {
+		if (regmap >= ARRAY_SIZE(pxw3pe_regmaps))
+			return dev_err_probe(dev, -EINVAL, "regmap=%d out of range\n",
+					     regmap);
+		p->rm = &pxw3pe_regmaps[regmap];
+		dev_info(dev, "register layout: %s (forced)\n", p->rm->name);
+		return i2c_wait_idle(p);
+	}
+
+	for (i = 0; i < ARRAY_SIZE(pxw3pe_regmaps); i++) {
+		p->rm = &pxw3pe_regmaps[i];
+		if (!i2c_wait_idle(p)) {
+			dev_info(dev, "register layout: %s (I2C base 0x%03x)\n",
+				 p->rm->name, p->rm->i2c);
+			return 0;
+		}
+		dev_dbg(dev, "register layout %s: I2C engine not idle\n",
+			p->rm->name);
+	}
+	p->rm = &pxw3pe_regmaps[0];
 	return -EBUSY;
 }
 
@@ -441,9 +509,9 @@ static int i2c_xfer_wr(struct pxw3pe *p, u8 ctrl, u8 addr, u8 reg,
 		       const u8 *payload, u8 len)
 {
 	void __iomem *bar = p->bar;
-	u32 ctl = REG_I2C_CTL;
-	u32 adr = REG_I2C_ADR;
-	u32 fdata = REG_I2C_FDATA;
+	u32 ctl = I2C_REG(p, REG_I2C_CTL);
+	u32 adr = I2C_REG(p, REG_I2C_ADR);
+	u32 fdata = I2C_REG(p, REG_I2C_FDATA);
 	int i, j;
 
 	if (len > 16)
@@ -459,6 +527,15 @@ static int i2c_xfer_wr(struct pxw3pe *p, u8 ctrl, u8 addr, u8 reg,
 
 		for (k = 0; k < 4 && i + k < len; k++)
 			w |= (u32)payload[i + k] << (8 * k);
+		/*
+		 * Space the FIFO pushes like the vendor i2c_write
+		 * (DelayNanoseconds before every FDATA write). Back-to-back
+		 * pushes make the alternate-layout engine (Rev1.2) drop byte 3
+		 * of the first word on transfers longer than 4 bytes; the only
+		 * such transfer is the 6-byte ISDB-S PLL program, so the tuner
+		 * latched the control byte as DB2 and never reached the target.
+		 */
+		udelay(1);
 		writel(w, bar + fdata);
 	}
 	writew(((u16)len << 8) | ctrl, bar + ctl);
@@ -478,10 +555,10 @@ static int i2c_xfer_rd(struct pxw3pe *p, u8 ctrl, u8 addr, u8 reg,
 		       u8 *rbuf, u8 len)
 {
 	void __iomem *bar = p->bar;
-	u32 ctl = REG_I2C_CTL;
-	u32 adr = REG_I2C_ADR;
-	u32 fstat = REG_I2C_FSTAT;
-	u32 fdata = REG_I2C_FDATA;
+	u32 ctl = I2C_REG(p, REG_I2C_CTL);
+	u32 adr = I2C_REG(p, REG_I2C_ADR);
+	u32 fstat = I2C_REG(p, REG_I2C_FSTAT);
+	u32 fdata = I2C_REG(p, REG_I2C_FDATA);
 	int i = 0, j;
 
 	if (len > 16)
@@ -958,7 +1035,8 @@ static void hw_quiesce(struct pxw3pe *p)
 	for (port = 0; port < NR_PORT; port++) {
 		u32 ts = port * DMA_OFF_PORT + DMA_TSMODE;
 
-		writel(0, bar + port * DMA_OFF_PORT + DMA_MGMT);
+		writel(0, bar + p->rm->dma + port * p->rm->dma_port +
+			  (DMA_MGMT - DMA_ADR_LO));
 		writeb(readb(bar + ts) & ~0x80, bar + ts);
 	}
 }
@@ -1768,6 +1846,11 @@ static int pxw3pe_hw_init(struct pxw3pe *p)
 	hw_quiesce(p);		/* R1: clear residual DMA/IRQ/TS state from a warm reload */
 	bridge_init(p);
 	tc_preset(p);
+	ret = i2c_select_regmap(p);
+	if (ret)
+		return dev_err_probe(dev, ret, "no responsive I2C engine\n");
+	if (p->rm != &pxw3pe_regmaps[0])
+		hw_quiesce(p);	/* R1 again, on the DMA block actually in use */
 	ret = asie_auth_enable(p);
 	if (ret)
 		return dev_err_probe(dev, ret, "ASIE auth/enable failed\n");
@@ -1870,14 +1953,15 @@ static void pxw3pe_selftest(struct pxw3pe *p)
 /* SPEC-DMA: DMA ring, thin ISR, TS kthread, descramble                   */
 /* ====================================================================== */
 
-static inline u32 dma_ch_off(int port, int ch)
+/* DMA channel/mgmt blocks move with the BAR layout; TS mode does not. */
+static inline u32 dma_ch_off(struct pxw3pe *p, int port, int ch)
 {
-	return port * DMA_OFF_PORT + ch * DMA_OFF_CH + DMA_ADR_LO;
+	return p->rm->dma + port * p->rm->dma_port + ch * DMA_OFF_CH;
 }
 
-static inline u32 dma_mgmt_off(int port)
+static inline u32 dma_mgmt_off(struct pxw3pe *p, int port)
 {
-	return port * DMA_OFF_PORT + DMA_MGMT;
+	return p->rm->dma + port * p->rm->dma_port + (DMA_MGMT - DMA_ADR_LO);
 }
 
 static inline u32 dma_ts_off(int port)
@@ -1919,19 +2003,19 @@ static int dma_chan_start(struct pxw3pe *p, int port, int ch)
 
 	spin_lock_irqsave(&p->reg_lock, fl);
 	{
-		void __iomem *cb = bar + dma_ch_off(port, ch);
+		void __iomem *cb = bar + dma_ch_off(p, port, ch);
 		u32 mgmt;
 
 		p->dma_cur[port][ch] = 0;
 		p->c_full[port][ch] = p->c_skip[port][ch] = 0;
 		p->c_tag_sat[port][ch] = p->c_tag_ter[port][ch] = 0;
-		mgmt = readl(bar + dma_mgmt_off(port));
-		writel(mgmt & ~(0x3u << (ch * 16)), bar + dma_mgmt_off(port));
+		mgmt = readl(bar + dma_mgmt_off(p, port));
+		writel(mgmt & ~(0x3u << (ch * 16)), bar + dma_mgmt_off(p, port));
 		writel(dma_buf_phys(p, port, ch, 0), cb);
 		writel(0, cb + (DMA_ADR_HI - DMA_ADR_LO));
 		writel(p->dma_ctl, cb + (DMA_CTL - DMA_ADR_LO));
-		writel(readl(bar + dma_mgmt_off(port)) | (0x3u << (ch * 16)),
-		       bar + dma_mgmt_off(port));
+		writel(readl(bar + dma_mgmt_off(p, port)) | (0x3u << (ch * 16)),
+		       bar + dma_mgmt_off(p, port));
 		p->dma_ch_on[port][ch] = true;
 	}
 	spin_unlock_irqrestore(&p->reg_lock, fl);
@@ -1939,8 +2023,8 @@ static int dma_chan_start(struct pxw3pe *p, int port, int ch)
 	msleep(100);
 	dev_dbg(dev, "dma P%dC%d start TSMODE=0x%02x MGMT=0x%08x XFR=%u IRQ_ACTIVE=0x%08x\n",
 		 port, ch, readb(bar + dma_ts_off(port)),
-		 readl(bar + dma_mgmt_off(port)),
-		 readl(bar + dma_ch_off(port, ch) + (DMA_XFR_STAT - DMA_ADR_LO)) &
+		 readl(bar + dma_mgmt_off(p, port)),
+		 readl(bar + dma_ch_off(p, port, ch) + (DMA_XFR_STAT - DMA_ADR_LO)) &
 		 DMA_XFR_MASK,
 		 readl(bar + REG_IRQ_ACTIVE));
 
@@ -1948,8 +2032,8 @@ static int dma_chan_start(struct pxw3pe *p, int port, int ch)
 		dev_err(dev, "dma P%dC%d failed to arm (IRQ_ACTIVE=0x%08x)\n",
 			port, ch, readl(bar + REG_IRQ_ACTIVE));
 		spin_lock_irqsave(&p->reg_lock, fl);
-		writel(readl(bar + dma_mgmt_off(port)) & ~(0x3u << (ch * 16)),
-		       bar + dma_mgmt_off(port));
+		writel(readl(bar + dma_mgmt_off(p, port)) & ~(0x3u << (ch * 16)),
+		       bar + dma_mgmt_off(p, port));
 		p->dma_ch_on[port][ch] = false;
 		spin_unlock_irqrestore(&p->reg_lock, fl);
 		writel(bit, bar + REG_IRQ_DISABLE);
@@ -1970,14 +2054,14 @@ static void dma_chan_stop(struct pxw3pe *p, int port, int ch)
 		return;
 	}
 	p->dma_ch_on[port][ch] = false;
-	writel(readl(bar + dma_mgmt_off(port)) & ~(0x3u << (ch * 16)),
-	       bar + dma_mgmt_off(port));
+	writel(readl(bar + dma_mgmt_off(p, port)) & ~(0x3u << (ch * 16)),
+	       bar + dma_mgmt_off(p, port));
 	spin_unlock_irqrestore(&p->reg_lock, fl);
 	writel(1u << (port * NR_CH + ch), bar + REG_IRQ_DISABLE);
 	dev_dbg(dev,
 		 "dma P%dC%d stop MGMT=0x%08x XFR=%u IRQ_STAT=0x%08x IRQ_ACTIVE=0x%08x\n",
-		 port, ch, readl(bar + dma_mgmt_off(port)),
-		 readl(bar + dma_ch_off(port, ch) + (DMA_XFR_STAT - DMA_ADR_LO)) &
+		 port, ch, readl(bar + dma_mgmt_off(p, port)),
+		 readl(bar + dma_ch_off(p, port, ch) + (DMA_XFR_STAT - DMA_ADR_LO)) &
 		 DMA_XFR_MASK,
 		 readl(bar + REG_IRQ_STAT), readl(bar + REG_IRQ_ACTIVE));
 }
@@ -2130,7 +2214,7 @@ static irqreturn_t pxw3pe_irq(int irq, void *dev)
 	for (bit = 0; bit < NR_ADAP; bit++) {
 		int port = bit / NR_CH;
 		int ch = bit % NR_CH;
-		void __iomem *cb = bar + dma_ch_off(port, ch);
+		void __iomem *cb = bar + dma_ch_off(p, port, ch);
 		u32 mgmt;
 		int cur, next;
 		bool full;
@@ -2152,8 +2236,8 @@ static irqreturn_t pxw3pe_irq(int irq, void *dev)
 		 * stream is captured whole.
 		 */
 		writel(dma_buf_phys(p, port, ch, next), cb);
-		mgmt = readl(bar + dma_mgmt_off(port));
-		writel(mgmt | (0x2u << (ch * 16)), bar + dma_mgmt_off(port));
+		mgmt = readl(bar + dma_mgmt_off(p, port));
+		writel(mgmt | (0x2u << (ch * 16)), bar + dma_mgmt_off(p, port));
 		p->dma_cur[port][ch] = next;
 
 		if (!full) {
@@ -2966,6 +3050,7 @@ static int pxw3pe_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (!p)
 		return -ENOMEM;
 	p->pdev = pdev;
+	p->rm = &pxw3pe_regmaps[0];	/* until i2c_select_regmap() */
 	mutex_init(&p->i2c_lock);
 	for (i = 0; i < NR_CHIP; i++) {
 		mutex_init(&p->chip_lock[i]);
