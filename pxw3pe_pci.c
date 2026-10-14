@@ -1576,7 +1576,8 @@ static u32 cn_raw_to_cdb(u32 raw, const u32 *tbl)
 	for (i = 3; i <= 30; i++) {
 		if (raw > tbl[i]) {
 			u32 span = tbl[i - 1] - tbl[i];
-			u32 frac = span ? (10 * (tbl[i - 1] - raw)) / span : 0;
+			/* fractional part in 0.01 dB (was scaled by 10 only) */
+			u32 frac = span ? (100 * (tbl[i - 1] - raw)) / span : 0;
 
 			return (i - 1) * 100 + frac;
 		}
