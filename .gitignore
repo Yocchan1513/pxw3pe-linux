@@ -25,3 +25,6 @@ firmware/extract/*.o
 *.swp
 *~
 .DS_Store
+
+# python bytecode (tools/)
+__pycache__/
