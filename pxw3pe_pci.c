@@ -74,6 +74,7 @@
 #define TS_TAG_SAT	0x47
 #define TS_TAG_TER	0xc7
 #define PKT_NUM_MIN	312			/* clamp floor for the pkt_num param */
+#define PXW3PE_START_SKIP 312			/* packets dropped after arming a port */
 #define NR_PORT		2
 #define NR_CH		2
 #define NR_ADAP		(NR_PORT * NR_CH)	/* S0/S1/T0/T1 */
@@ -269,6 +270,14 @@ struct pxw3pe {
 	int		nbuf;		/* ping-pong buffers per channel */
 	bool		dma_ch_on[NR_PORT][NR_CH];
 	u8		dma_cur[NR_PORT][NR_CH];	/* ping-pong buffer idx */
+	/*
+	 * Packets to drop at the start of a port's stream: the bridge still
+	 * holds packets from before the port was armed. Measured on a Rev1.3
+	 * (ISDB-T, both tuners): CC gaps within the first 5..61 packets of a
+	 * capture, intermittently, and none afterwards. Consumed by the bottom
+	 * half only (dma_dispatch).
+	 */
+	u32		start_skip[NR_PORT];
 	spinlock_t	reg_lock;	/* serialize DMA mgmt RMW vs ISR */
 	/* IRQ top-half -> threaded bottom-half handoff: filled DMA buffers to
 	 * dispatch + copy outside the hardirq. Produced under reg_lock by the top
@@ -2017,6 +2026,8 @@ static int dma_chan_start(struct pxw3pe *p, int port, int ch)
 		u32 mgmt;
 
 		p->dma_cur[port][ch] = 0;
+		if (ch == 0)
+			p->start_skip[port] = PXW3PE_START_SKIP;
 		p->c_full[port][ch] = p->c_skip[port][ch] = 0;
 		p->c_tag_sat[port][ch] = p->c_tag_ter[port][ch] = 0;
 		mgmt = readl(bar + dma_mgmt_off(p, port));
@@ -2174,6 +2185,14 @@ static void dma_dispatch(struct pxw3pe *p, int port, int ch,
 {
 	struct pxw3pe_adap *run_a = NULL;
 	u32 off, run_off = 0;
+
+	if (p->start_skip[port]) {	/* stale packets from before arming */
+		u32 n = min(p->start_skip[port], len / TS_SIZE);
+
+		p->start_skip[port] -= n;
+		buf += n * TS_SIZE;
+		len -= n * TS_SIZE;
+	}
 
 	for (off = 0; off + TS_SIZE <= len; off += TS_SIZE) {
 		u8 tag = buf[off];
