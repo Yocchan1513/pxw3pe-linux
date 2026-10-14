@@ -359,6 +359,15 @@ module_param(descramble, bool, 0644);
 MODULE_PARM_DESC(descramble,
 		 "Apply ASV5606 transport DES descramble when key firmware is present (default on)");
 
+/*
+ * Fixed DVB adapter numbers, e.g. adapter_nr=2,3,0,1. Adapters are registered
+ * in the order S0, S1, T0, T1, and each takes the first free number in this
+ * list (dvb_register_adapter()); unset entries mean "next free number".
+ * Without it the numbers depend on probe order and other DVB devices, which
+ * breaks the /dev/dvb/adapterN paths in Mirakurun's tuners.yml.
+ */
+DVB_DEFINE_MOD_OPT_ADAPTER_NR(adapter_nr);
+
 static int regmap = -1;
 module_param(regmap, int, 0444);
 MODULE_PARM_DESC(regmap,
@@ -2966,7 +2975,6 @@ static int pxw3pe_dvb_init(struct pxw3pe *p)
 
 	for (i = 0; i < NR_ADAP; i++) {
 		struct pxw3pe_adap *a = &p->adap[i];
-		short adapter_nr[] = { -1 };
 
 		a->card    = p;
 		a->demod   = map[i].demod;
