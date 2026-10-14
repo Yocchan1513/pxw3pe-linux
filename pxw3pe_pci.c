@@ -2305,7 +2305,9 @@ static irqreturn_t pxw3pe_irq_thread(int irq, void *dev)
  *
  * The 184-byte payload is exactly 23 DES blocks; the first 16 (bytes 4..131)
  * use the even key, the last 7 (bytes 132..187) the odd key. The 4-byte TS
- * header is left untouched.
+ * header is left untouched, including transport_error_indicator: it is the
+ * demodulator's uncorrectable-error flag, which downstream (libaribb25,
+ * Mirakurun, drop checkers) relies on.
  */
 static void ts_process(u8 *buf, u32 len)
 {
@@ -2330,7 +2332,6 @@ static void ts_process(u8 *buf, u32 len)
 				des_decrypt(k, blk, blk);
 			}
 		}
-		pkt[1] &= 0x7f;			/* clear error indicator  */
 	}
 }
 
