@@ -52,8 +52,17 @@ probe時に`request_firmware()`で`/lib/firmware/pxw3pe.fw`から読み込みま
 `pxw3pe.fw`は公式ドライバ`asv5220_dtv.ko`から自分でビルドしてください。手順は
 [`firmware/README.md`](firmware/README.md)にあります。
 
-PLEX公式サイトでの配布はすでに終わっていますが、Wayback Machineから拾えるかもしれません。
-[https://web.archive.org/web/20131001000000*/http://plex-net.co.jp/plex/PX-SERIES_ver.1.0_Linux_Driver.zip](https://web.archive.org/web/20130401000000*/http://plex-net.co.jp/plex/px-w3pe/64bit.tar.gz)
+PLEX公式サイトでの配布はすでに終わっていますが、Wayback Machineから入手できます。
+**使う`asv5220_dtv.ko`はビルドによって結果が変わる**ので、次の表で確認してください。
+
+| 入手元(Wayback) | `asv5220_dtv.ko` のビルド | 結果 |
+|---|---|---|
+| [`PX-W3PE_LinuxDriver_ver.1.0.0.zip`](https://web.archive.org/web/20150505112623/http://plex-net.co.jp/plex/px-w3pe/PX-W3PE_LinuxDriver_ver.1.0.0.zip) の `Driver/64bit.tar.gz` | 2013-04-23、vermagic `2.6.32-279.5.1.el6`、sha256 `402c8fd855d1d1102397974baa2c945e7aba7de88c4b2283fafb1fa103b20d99` | **正しい鍵が得られる**(Rev1.3 で、復号した PAT の CRC が一致することを確認) |
+| [`px-w3pe/64bit.tar.gz`](https://web.archive.org/web/20130325235643/http://plex-net.co.jp/plex/px-w3pe/64bit.tar.gz) | 2013-01-31、vermagic `2.6.32-279.el6`、sha256 `e8772c6293085034520c4bdc355d1cfe34b47e12138e825ccb5bc5817f338a0a` | **使わないこと**。抽出は成功してしまうが、シードは同じなのに DES 鍵2本と XOR シードが違う値になり、復号できない |
+
+zip の sha256 は `75e22c30421a39622562b207c15ddea47ebbe55babeb83379c7409d700b6e977` です。
+`PX-SERIES_ver.1.0_Linux_Driver.zip` は USB チューナー(S3U、S3U2、W3U3)用のドライバで、
+ASV5220 用の`.ko`は入っていません。
 
 firmwareを入れずにロードしてもエラーにはなりません。ただしカード独自のスクランブルが
 かかったままのストリームしか出てこないので、まともには使えません。これは放送波のARIB
@@ -116,6 +125,7 @@ recisdb tune -i /dev/dvb/adapter0/frontend0 -c BS15_0 -t 30 out.ts
 | `use_msi` | `1` | MSI割り込みを使う（無効なら従来のINTx） |
 | `s_acquire_retries` | `1` | キャリアがロックしないときにISDB-SのPLLと捕捉をリトライする回数 |
 | `pkt_num`, `n_dmabuf` | — | DMAリングのチューニング |
+| `adapter_nr` | 未設定 | DVBアダプタ番号の固定。登録順はS0、S1、T0、T1。例: `adapter_nr=2,3,0,1`でISDB-Tがadapter0/1になる |
 
 ## 注意事項
 
