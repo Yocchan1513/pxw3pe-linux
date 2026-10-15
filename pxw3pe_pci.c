@@ -1682,13 +1682,19 @@ static void fc_rmw(struct pxw3pe *p, u8 taddr, u8 reg, u8 set, u8 clr)
 /* FC0012 base register init (mainline fc0012.c init table,
  * regs 0x01..0x15). Mandatory once per tuner — without it the VCO
  * auto-calibration rails and the PLL never locks at low UHF.
+ *
+ * reg 0x13 (LNA gain) is 0x08 = Middle, as in mainline fc0012_init() ("Set to
+ * Middle Gain: 0x08, Low Gain: 0x00, High Gain: 0x10"). It used to be 0x10
+ * (High), which overloads the front end: on a Rev1.3 card with a normal home
+ * antenna feed, C/N rose from 17.8-19.1 dB to 26.9-29.0 dB on every UHF channel
+ * and 50-650 lost packets per 10 s on 21-24ch went to zero (docs/MEASUREMENTS.md).
  */
 static void fc0012_init_regs(struct pxw3pe *p, u8 taddr)
 {
 	static const u8 regs[] = {
 		0x00, 0x05, 0x10, 0x00, 0x00, 0x0f, 0x00, 0x00,
 		0xff, 0x6e, 0xb8, 0x82, 0xf8, 0x02, 0x00, 0x00,
-		0x00, 0x00, 0x1b, 0x10, 0x00, 0x04,
+		0x00, 0x00, 0x1b, 0x08, 0x00, 0x04,
 	};
 	int i;
 
