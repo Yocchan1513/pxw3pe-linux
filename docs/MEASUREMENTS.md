@@ -83,8 +83,8 @@ FC0012 の reg 0x13(LNA ゲイン)を、High(0x10、変更前の値)から Middl
 上の測定は Ubuntu 24.04 の実機で行ったもの。同じ修正が Rocky 10.2 の実機でも効くか確認した。
 
 - 環境: PX-W3PE Rev1.3(標準レイアウト)、Rocky Linux 10.2、kernel 6.12.0-211.62.1.el10_2、recisdb 1.3.0、
-  Mirakurun 4.1.5(測定中は停止)。地デジは強電界で、C/N は `recisdb checksignal` で 38〜46 dB
-  (45.78 dB は表の上限で頭打ち)
+  Mirakurun 4.1.5。Mirakurun は測定中だけ停止した。地デジは強電界で、`recisdb checksignal` の C/N は
+  38〜46 dB だった。45.78 dB で変わらないチャンネルは、C/N の表の上限に張り付いているとみられる
 - 測定: T0(adapter2)で 14、15、16、17、23、26、29、31ch を 15 秒ずつ、26ch はさらに 2 回、計 10 本。
   `tools/dvbtest.py` で取り込み、`tscheck.py` で集計
 
