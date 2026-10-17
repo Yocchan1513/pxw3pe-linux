@@ -150,3 +150,4 @@ firmware blobの中の4つの暗号フィールドはカードのモデルに固
 ## 謝辞
 
 - ブリングアップの裏取りには、knight-rider氏のGPLドライバ[`ptx`](https://github.com/knight-rider/ptx)（同梱のPX-Q3PE用`pxq3pe`）と、nns779氏の[`px4_drv`](https://github.com/nns779/px4_drv)を参照しました。
+- ohayoyogi氏の[`ohayoyogi/pxw3pe-linux`](https://github.com/ohayoyogi/pxw3pe-linux)。Ubuntu 24.04の実機で見つかった不具合の修正と測定記録を取り込みました。
