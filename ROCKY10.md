@@ -45,7 +45,7 @@ sudo restorecon -v /lib/firmware/pxw3pe.fw   # SELinux のラベルを付け直�
 
 ## 3. DKMS でビルドしてインストールする
 
-このリポジトリ(`rocky10` ブランチ)のディレクトリで実行します。
+このリポジトリのディレクトリで実行します。
 
 ```sh
 sudo mkdir -p /usr/src/pxw3pe-1.0

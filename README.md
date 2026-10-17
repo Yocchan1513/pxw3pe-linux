@@ -14,6 +14,12 @@
 > - Rocky Linux 10(RHEL 10 系)への対応。標準カーネルに DVB が入っていないため、`dvb-core` を同梱して
 >   DKMS で一緒にビルドします。手順は [`ROCKY10.md`](ROCKY10.md) を参照してください。
 >   Rocky Linux 10.2 の実機で、地デジ・BS の受信と、4チューナーの同時録画を確認しています。
+> - ohayoyogi 氏のフォーク([ohayoyogi/pxw3pe-linux](https://github.com/ohayoyogi/pxw3pe-linux))の
+>   `improve/w3pe-fixes` ブランチを取り込み(Ubuntu 24.04 / kernel 7.0 の実機で見つかった不具合の修正)。
+>   TEI ビットを消さない、録画開始直後の 312 パケットを捨てる、FC0012 の LNA ゲインを Middle にする、
+>   C/N の小数部の修正、`adapter_nr` パラメータの追加、正しい `asv5220_dtv.ko` の案内です。
+>   Rocky 10.2 の実機でも、修正前は地デジの録画 10 本中 9 本に CC エラーが 1〜3 件ありましたが、
+>   取り込み後は 10 本とも 0 件になりました([`docs/MEASUREMENTS.md`](docs/MEASUREMENTS.md))。
 > - recisdb は 1.3.1 以降を、`--features dvb` を付けてビルドしてください。1.2.x は録画の終了時にフリーズすることがあります。
 
 PLEXのPX-W3PE Rev1.3というPCIeテレビチューナーカード用のLinux DVBドライバです。
@@ -32,8 +38,8 @@ PLEXのPX-W3PE Rev1.3というPCIeテレビチューナーカード用のLinux D
 ## 動作環境
 
 - PLEX PX-W3PE Rev1.3
-- x86-64のLinux、kernel 5.15系で動作確認
-- 録画・選局はrecisdb 1.2系
+- x86-64のLinux。kernel 5.15系、Ubuntu 24.04(kernel 7.0)、Rocky Linux 10.2(kernel 6.12)で動作確認
+- 録画・選局はrecisdb 1.3.1以降(`--features dvb`)
 
 Rocky Linux 10(RHEL 10系)は標準カーネルにDVBが入っていません。同梱の`dvb-core/`を使う手順を
 [`ROCKY10.md`](ROCKY10.md)にまとめています。
